@@ -1,4 +1,5 @@
 //! Decoder configuration and CRC-gated candidate selection.
+mod crc;
 mod pre2;
 mod search;
 #[cfg(test)]
@@ -35,6 +36,8 @@ pub(crate) struct ReferenceStages {
     pub main: bool,
     pub pre1: bool,
     pub list: bool,
+    /// Check each candidate directly instead of using basis syndromes.
+    pub crc: bool,
     /// Second preprocessing without boxes.
     pub pre2_box_free: bool,
     /// The general step at every τ for w = 3.
@@ -71,6 +74,7 @@ struct MetricMinimum {
 // original CRC-aware search and chooses its final winner outside the loop.
 struct SearchState<const MIN: bool = false> {
     received: PackedCodeword,
+    crc: crc::CandidateCrc,
     minimum: Option<MetricMinimum>,
     best_any: Option<Candidate>,
     best_valid: Option<Candidate>,
@@ -150,6 +154,7 @@ impl Decoder {
         let baseline = xor_delta(baseline, received);
         let mut state: SearchState<MIN> = SearchState {
             received,
+            crc: crc::CandidateCrc::default(),
             minimum: None,
             best_any: None,
             best_valid: None,
@@ -486,7 +491,7 @@ impl Decoder {
         }
         self.materialize(state, diff, order, positions, distance, ba, bv);
     }
-    // Keep the infrequent CRC/unpermutation/record path out of the scoring
+    // Keep the CRC/unpermutation/record path out of the scoring
     // loop. The distance-only pruning above is inlined into batch selection.
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
@@ -503,25 +508,28 @@ impl Decoder {
         let diag = &mut state.diagnostics;
         let x = xor_delta(diff, state.received);
         diag.crc_checked_candidates += 1;
-        let codeword;
-        let message_with_crc;
-        let crc_valid;
-        if ba || self.config.collect_candidates {
-            codeword = inverse_permute(&x, &self.basis.sys_to_natural);
-            message_with_crc = message_with_crc_from_codeword(&codeword);
-            crc_valid = verify_crc14_packed_message(message_with_crc);
-            if !crc_valid {
-                diag.crc_failures += 1;
-            }
+        #[cfg(test)]
+        let direct_crc = self.reference.crc;
+        #[cfg(not(test))]
+        let direct_crc = false;
+        let crc_valid = if direct_crc {
+            verify_crc14_packed_message(extract_natural_message_with_crc(
+                &x,
+                &self.basis.natural_to_sys,
+            ))
         } else {
-            message_with_crc = extract_natural_message_with_crc(&x, &self.basis.natural_to_sys);
-            crc_valid = verify_crc14_packed_message(message_with_crc);
-            if !crc_valid {
-                diag.crc_failures += 1;
+            state
+                .crc
+                .check(&self.basis, &x, &positions[..order as usize])
+        };
+        if !crc_valid {
+            diag.crc_failures += 1;
+            if !ba && !self.config.collect_candidates {
                 return;
             }
-            codeword = inverse_permute(&x, &self.basis.sys_to_natural);
         }
+        let codeword = inverse_permute(&x, &self.basis.sys_to_natural);
+        let message_with_crc = message_with_crc_from_codeword(&codeword);
         diag.materialized_candidates += 1;
         let rec = Candidate {
             codeword,

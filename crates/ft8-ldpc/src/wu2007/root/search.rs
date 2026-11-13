@@ -69,6 +69,7 @@ mod tests {
     fn state() -> SearchState {
         SearchState {
             received: [0; 3],
+            crc: crc::CandidateCrc::default(),
             minimum: None,
             best_any: None,
             best_valid: None,

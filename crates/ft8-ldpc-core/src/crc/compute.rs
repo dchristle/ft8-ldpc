@@ -5,7 +5,9 @@
 
 #[cfg(test)]
 use crate::crc::compute_crc14;
-use crate::crc::constants::{CRC_LEN, MESSAGE_WITH_CRC_BITS, PAYLOAD_BITS};
+#[cfg(test)]
+use crate::crc::constants::CRC_LEN;
+use crate::crc::constants::{MESSAGE_WITH_CRC_BITS, PAYLOAD_BITS};
 use crate::crc::core::BIT_LEN;
 
 const CRC_WIDTH: usize = 14;
@@ -30,30 +32,6 @@ pub fn compute_crc14_from_bits(bits: &[bool]) -> u16 {
         rem ^= CRC_POLYNOMIAL & needs_xor.wrapping_neg();
 
         rem &= MASK;
-    }
-
-    rem
-}
-
-#[inline(always)]
-fn compute_crc14_from_bitpacked(cw: [u64; 3]) -> u16 {
-    let mut rem: u16 = 0;
-    let mask: u16 = (1 << CRC_WIDTH) - 1;
-
-    for i in 0..BIT_LEN {
-        let bit = if i < PAYLOAD_BITS {
-            let word_index = i / 64;
-            let bit_index = i % 64;
-            ((cw[word_index] >> bit_index) & 1) != 0
-        } else {
-            false
-        };
-
-        rem = (rem << 1) | (bit as u16);
-
-        let needs_xor = rem >> CRC_WIDTH;
-        rem ^= CRC_POLYNOMIAL & needs_xor.wrapping_neg();
-        rem &= mask;
     }
 
     rem
@@ -90,27 +68,6 @@ fn verify_crc14_bytes(message: &[bool; MESSAGE_WITH_CRC_BITS]) -> bool {
         if message[PAYLOAD_BITS + i] {
             actual_crc |= 1 << (CRC_LEN - 1 - i);
         }
-    }
-
-    computed_crc == actual_crc
-}
-
-/// Verifies the CRC in the first 91 bits of an LSB-first packed codeword.
-#[inline(always)]
-pub fn verify_crc14_bitpacked(cw: [u64; 3]) -> bool {
-    verify_crc14_packed_message([cw[0], cw[1]])
-}
-
-/// Verifies a 91-bit LSB-first packed message-with-CRC, ignoring unused high bits.
-#[inline(always)]
-pub fn verify_crc14_packed_message(message: [u64; 2]) -> bool {
-    let computed_crc = compute_crc14_from_bitpacked([message[0], message[1], 0]);
-    let mut actual_crc = 0u16;
-    for i in PAYLOAD_BITS..(PAYLOAD_BITS + CRC_LEN) {
-        let word_index = i / 64;
-        let bit_index = i % 64;
-        let bit = ((message[word_index] >> bit_index) & 1) != 0;
-        actual_crc = (actual_crc << 1) | (bit as u16);
     }
 
     computed_crc == actual_crc
@@ -248,21 +205,5 @@ mod tests {
     fn test_extract_crc_packs_bits() {
         let crc_bits = binary_str_to_bools::<CRC_LEN>(CRC);
         assert_eq!(extract_crc(&crc_bits), binary_str_to_u16(CRC));
-    }
-
-    #[test]
-    fn test_verify_packed_message_matches_bool_message() {
-        let msg = PAYLOAD;
-        let msg_bits = binary_str_to_bools::<PAYLOAD_BITS>(msg);
-        let with_crc = add_crc14(&msg_bits);
-
-        let mut packed = [0u64; 2];
-        for (i, bit) in with_crc.iter().copied().enumerate() {
-            if bit {
-                packed[i / 64] |= 1u64 << (i % 64);
-            }
-        }
-
-        assert_eq!(verify_crc14_packed_message(packed), verify_crc14(&with_crc));
     }
 }

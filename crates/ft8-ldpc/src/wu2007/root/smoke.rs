@@ -800,6 +800,7 @@ fn all_references_together_match_the_optimized_decoder() {
         main: true,
         pre1: true,
         list: true,
+        crc: true,
         pre2_box_free: false,
         pre2_general: false,
     };

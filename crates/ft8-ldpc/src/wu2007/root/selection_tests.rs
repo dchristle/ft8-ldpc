@@ -228,6 +228,7 @@ fn strict_ties_infinite_metrics_and_baseline_crc_cache() {
     for distances in [[5., 3., 3., 4.], [f32::INFINITY; 4], [0., -0., 0., 1.]] {
         let mut state: SearchState<true> = SearchState {
             received: [0; 3],
+            crc: crc::CandidateCrc::default(),
             minimum: None,
             best_any: None,
             best_valid: None,
@@ -278,6 +279,53 @@ fn strict_ties_infinite_metrics_and_baseline_crc_cache() {
                     1
                 }
             );
+        }
+    }
+}
+
+#[test]
+fn basis_syndromes_preserve_direct_crc_selection_and_diagnostics() {
+    let mut rng = SplitMix64(0xc7c1_45e1);
+    let noisy = awgn(&mut rng, -2.);
+    let inputs = [
+        noisy,
+        noisy.map(|x| -x),
+        noisy.map(|x| if x < 0. { -f32::MAX } else { f32::MAX }),
+        [0.; N],
+    ];
+    for cascade_bits in [0, 7, 14] {
+        for order in 0..=3 {
+            for collect_candidates in [false, true] {
+                for selection_policy in [
+                    SelectionPolicy::BestCrcValid,
+                    SelectionPolicy::MinMetricThenCrc,
+                ] {
+                    for cap in [0, 1, 3, 4, 97, 200_000] {
+                        let config = Config {
+                            cascade_bits,
+                            search_order: order,
+                            collect_candidates,
+                            selection_policy,
+                            max_recoded_candidates: cap,
+                            max_list_candidates: if cap == 97 { 0 } else { 4 },
+                            enable_second_preprocessing: order <= 2,
+                            parity_prefix_len: Some(65),
+                            second_preprocessing_prefix_len: Some(5),
+                            require_crc: cap % 2 == 0,
+                            ..Config::default()
+                        };
+                        let mut optimized = Decoder::new(config.clone()).unwrap();
+                        let mut direct = Decoder::new(config.clone()).unwrap();
+                        direct.reference.crc = true;
+                        for input in &inputs {
+                            let a = optimized.decode(input);
+                            let b = direct.decode(input);
+                            assert_eq!(optimized.last_trace, direct.last_trace, "{config:?}");
+                            assert_eq!(format!("{a:?}"), format!("{b:?}"), "{config:?}");
+                        }
+                    }
+                }
+            }
         }
     }
 }

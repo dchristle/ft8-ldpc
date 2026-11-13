@@ -48,6 +48,7 @@ pub(crate) fn synthetic(seed: u64, k: usize, density: u64, config: Config) -> Sy
 pub(in crate::wu2007::root) fn fresh_state() -> SearchState {
     SearchState {
         received: [0; 3],
+        crc: crc::CandidateCrc::default(),
         minimum: None,
         best_any: None,
         best_valid: None,
