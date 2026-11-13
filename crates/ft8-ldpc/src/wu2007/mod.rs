@@ -24,6 +24,6 @@ mod root;
 mod scoring;
 
 pub use basis::RedundancyOrder;
-pub use config::{Config, ConfigError};
+pub use config::{Config, ConfigError, SelectionPolicy};
 pub use result::{Candidate, DecodeResult, Diagnostics, Status, CANDIDATE_POSITION_CAPACITY};
 pub use root::Decoder;

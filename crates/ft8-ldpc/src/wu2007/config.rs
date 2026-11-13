@@ -1,6 +1,17 @@
 //! Decoder configuration and validation.
 use super::basis::RedundancyOrder;
 
+/// Chooses a winner from the candidates actually searched, independently of acceptance.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SelectionPolicy {
+    /// Select the first minimum-distance candidate, then check its CRC.
+    MinMetricThenCrc,
+    /// Prefer the first minimum-distance CRC-valid candidate, falling back to the
+    /// first minimum-distance candidate if none passes CRC.
+    #[default]
+    BestCrcValid,
+}
+
 /// Search controls for the Wu2007 decoder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -27,9 +38,14 @@ pub struct Config {
     pub max_recoded_candidates: usize,
     /// Maximum collected candidates; zero keeps the list empty without changing selection.
     pub max_list_candidates: usize,
-    /// Include an ordered candidate list in the result.
+    /// Include a CRC-preferred ordered candidate list in the result. This checks
+    /// CRC and reconstructs every scored candidate under either selection policy,
+    /// even when `max_list_candidates` is zero.
     pub collect_candidates: bool,
-    /// Require CRC validity for success and early stopping; final selection always prefers it.
+    /// How the searched candidates are ranked for final selection.
+    pub selection_policy: SelectionPolicy,
+    /// Require CRC validity for success and the baseline zero-error early stop.
+    /// This does not change candidate selection.
     pub require_crc: bool,
 }
 
@@ -47,6 +63,7 @@ impl Default for Config {
             max_recoded_candidates: 300_000,
             max_list_candidates: 32,
             collect_candidates: false,
+            selection_policy: SelectionPolicy::BestCrcValid,
             require_crc: true,
         }
     }

@@ -1,5 +1,5 @@
 //! Checks allocation-free decoding after construction with candidate collection disabled.
-use ft8_ldpc::wu2007::{Config, Decoder, Status};
+use ft8_ldpc::wu2007::{Config, Decoder, SelectionPolicy, Status};
 use ft8_ldpc_core::{crc::add_crc14, fec::BASE_GENERATOR_MATRIX};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -90,7 +90,13 @@ fn collection_off_decodes_allocate_nothing_after_construction() {
     let expected_message = [pack(&message)[0], pack(&message)[1]];
     let interference = noise.map(|x| -x);
     let mut searched_recoveries = [false; 2];
-    for cascade_bits in [0, 14] {
+    for (cascade_bits, selection_policy) in [0, 14].into_iter().flat_map(|c| {
+        [
+            SelectionPolicy::BestCrcValid,
+            SelectionPolicy::MinMetricThenCrc,
+        ]
+        .map(|p| (c, p))
+    }) {
         for search_order in 0..=4 {
             for (first, second, tau) in [
                 (false, false, None),
@@ -100,6 +106,7 @@ fn collection_off_decodes_allocate_nothing_after_construction() {
             ] {
                 for require_crc in [false, true] {
                     let config = Config {
+                        selection_policy,
                         cascade_bits,
                         search_order,
                         enable_first_preprocessing: first,

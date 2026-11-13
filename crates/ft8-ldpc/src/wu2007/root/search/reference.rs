@@ -12,7 +12,12 @@ pub(crate) fn survivor_mask_reference(p: u64, x: &[u64], m: usize, theta: usize)
 
 impl Decoder {
     /// Counts one examined pattern and returns whether it is rejected.
-    fn reference_examine(state: &mut SearchState, m: usize, q: u32, theta: usize) -> bool {
+    fn reference_examine<const MIN: bool>(
+        state: &mut SearchState<MIN>,
+        m: usize,
+        q: u32,
+        theta: usize,
+    ) -> bool {
         let diagnostics = &mut state.diagnostics;
         diagnostics.visited_steps += 1;
         diagnostics.enumerated_patterns += 1;
@@ -22,9 +27,9 @@ impl Decoder {
         rejected
     }
 
-    pub(in crate::wu2007::root) fn pre1_reference(
+    pub(in crate::wu2007::root) fn pre1_reference<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         m: usize,
@@ -39,9 +44,9 @@ impl Decoder {
         }
     }
 
-    pub(in crate::wu2007::root) fn pre1_reference_order2(
+    pub(in crate::wu2007::root) fn pre1_reference_order2<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,
@@ -69,9 +74,9 @@ impl Decoder {
     }
 
     /// Builds each surviving diff from the baseline without carrying partial diffs.
-    pub(in crate::wu2007::root) fn pre1_reference_order3(
+    pub(in crate::wu2007::root) fn pre1_reference_order3<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,
@@ -96,9 +101,9 @@ impl Decoder {
         }
     }
 
-    pub(in crate::wu2007::root) fn pre1_reference_order4(
+    pub(in crate::wu2007::root) fn pre1_reference_order4<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,

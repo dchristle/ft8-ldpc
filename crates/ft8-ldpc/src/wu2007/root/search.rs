@@ -69,6 +69,7 @@ mod tests {
     fn state() -> SearchState {
         SearchState {
             received: [0; 3],
+            minimum: None,
             best_any: None,
             best_valid: None,
             candidates: Vec::new(),
@@ -191,7 +192,14 @@ mod tests {
                         }
                         let mut actual = state();
                         if t > 64 {
-                            decoder.pre1_generic::<true>(&mut actual, baseline, 7, m, b, theta);
+                            decoder.pre1_generic::<true, false>(
+                                &mut actual,
+                                baseline,
+                                7,
+                                m,
+                                b,
+                                theta,
+                            );
                         } else {
                             match m {
                                 1 => decoder.pre1_order1(&mut actual, baseline, 7, b[0], theta),
@@ -216,7 +224,7 @@ mod tests {
                                     b[0],
                                     theta,
                                 ),
-                                _ => decoder.pre1_generic::<false>(
+                                _ => decoder.pre1_generic::<false, false>(
                                     &mut actual,
                                     baseline,
                                     7,
@@ -383,9 +391,9 @@ impl Decoder {
         baseline
     }
 
-    pub(super) fn main_generic(
+    pub(super) fn main_generic<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         m: usize,
@@ -400,9 +408,9 @@ impl Decoder {
         });
     }
 
-    pub(super) fn first_preprocessing(
+    pub(super) fn first_preprocessing<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
     ) {
@@ -429,34 +437,43 @@ impl Decoder {
                 2 => self.pre1_order2_vector(state, baseline, k, b[0], theta),
                 3 => self.pre1_order3_vector(state, baseline, k, b[0], theta),
                 4 => self.pre1_order4_vector(state, baseline, k, b[0], theta),
-                _ => self.pre1_generic::<false>(state, baseline, k, m, b, theta),
+                _ => self.pre1_generic::<false, MIN>(state, baseline, k, m, b, theta),
             }
         } else {
             for i in 0..k {
                 self.prefix_pairs[i] = mask_red(self.basis.parity_basis_deltas[i], mask);
             }
-            self.pre1_generic::<true>(state, baseline, k, m, b, theta);
+            self.pre1_generic::<true, MIN>(state, baseline, k, m, b, theta);
         }
     }
 
     // Count here so admission does not count the same pattern twice.
     #[inline(always)]
-    fn pre1_reject(state: &mut SearchState, m: usize, q: usize, theta: usize) -> bool {
+    fn pre1_reject<const MIN: bool>(
+        state: &mut SearchState<MIN>,
+        m: usize,
+        q: usize,
+        theta: usize,
+    ) -> bool {
         Self::pre1_counts(state, 1, usize::from(m + q > theta));
         m + q > theta
     }
 
     #[inline(always)]
-    fn pre1_counts(state: &mut SearchState, examined: usize, rejected: usize) {
+    fn pre1_counts<const MIN: bool>(
+        state: &mut SearchState<MIN>,
+        examined: usize,
+        rejected: usize,
+    ) {
         state.diagnostics.visited_steps += examined;
         state.diagnostics.enumerated_patterns += examined;
         state.diagnostics.preprocess1_examined += examined;
         state.diagnostics.preprocess1_rejects += rejected;
     }
 
-    fn pre1_order1(
+    fn pre1_order1<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,
@@ -483,9 +500,9 @@ impl Decoder {
         }
     }
 
-    fn pre1_generic<const TWO_WORDS: bool>(
+    fn pre1_generic<const TWO_WORDS: bool, const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         m: usize,

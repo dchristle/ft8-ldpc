@@ -3,9 +3,9 @@
 use super::*;
 
 impl Decoder {
-    pub(super) fn pre2_box_free_reference(
+    pub(super) fn pre2_box_free_reference<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
     ) {

@@ -2,6 +2,8 @@
 mod pre2;
 mod search;
 #[cfg(test)]
+mod selection_tests;
+#[cfg(test)]
 mod smoke;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -12,10 +14,8 @@ use ft8_ldpc_core::protocol::N;
 
 #[derive(Clone, Copy, Default)]
 struct PendingCandidate {
-    diff: PackedCodeword,
     order: u8,
     positions: [u8; 6],
-    num_positions: u8,
 }
 // Fixed-capacity candidate storage reused across decodes.
 #[derive(Clone, Copy, Default)]
@@ -55,9 +55,23 @@ pub struct Decoder {
     pairs: pre2::PairWorkspace,
     #[cfg(test)]
     reference: ReferenceStages,
+    #[cfg(test)]
+    last_trace: Vec<(PackedCodeword, u8, [u8; 6])>,
 }
-struct SearchState {
+// Only the packed difference and distance are needed by deferred selection.
+// The optional CRC caches the baseline zero-error stopping check.
+#[derive(Clone, Copy)]
+struct MetricMinimum {
+    diff: PackedCodeword,
+    distance: f32,
+    crc_valid: Option<bool>,
+}
+
+// MIN specializes the non-list minimum-metric path. Collection shares the
+// original CRC-aware search and chooses its final winner outside the loop.
+struct SearchState<const MIN: bool = false> {
     received: PackedCodeword,
+    minimum: Option<MetricMinimum>,
     best_any: Option<Candidate>,
     best_valid: Option<Candidate>,
     candidates: Vec<Candidate>,
@@ -88,10 +102,22 @@ impl Decoder {
             pairs,
             #[cfg(test)]
             reference: ReferenceStages::default(),
+            #[cfg(test)]
+            last_trace: Vec::new(),
         })
     }
     /// Decodes one finite LLR array in natural codeword order.
     pub fn decode(&mut self, llr: &[f32; N]) -> DecodeResult {
+        match self.config.selection_policy {
+            SelectionPolicy::BestCrcValid => self.decode_search::<false>(llr, true),
+            SelectionPolicy::MinMetricThenCrc if self.config.collect_candidates => {
+                self.decode_search::<false>(llr, false)
+            }
+            SelectionPolicy::MinMetricThenCrc => self.decode_search::<true>(llr, false),
+        }
+    }
+
+    fn decode_search<const MIN: bool>(&mut self, llr: &[f32; N], prefer_crc: bool) -> DecodeResult {
         let k = 91 - self.config.cascade_bits;
         let mut diagnostics = Diagnostics {
             cascade_bits: self.config.cascade_bits,
@@ -122,8 +148,9 @@ impl Decoder {
             }
         }
         let baseline = xor_delta(baseline, received);
-        let mut state = SearchState {
+        let mut state: SearchState<MIN> = SearchState {
             received,
+            minimum: None,
             best_any: None,
             best_valid: None,
             candidates: Vec::new(),
@@ -132,12 +159,8 @@ impl Decoder {
             trace: Vec::new(),
         };
         self.admit(&mut state, baseline, 0, [0; 6]);
-        if !self.config.collect_candidates
-            && state.best_any.as_ref().is_some_and(|b| {
-                b.hard_error_count == 0 && (!self.config.require_crc || b.crc_valid)
-            })
-        {
-            return self.finish(state);
+        if !self.config.collect_candidates && self.baseline_stops(&mut state) {
+            return self.finish(state, prefer_crc);
         }
         self.batch.len = 0;
         let before_enumerated = state.diagnostics.enumerated_patterns;
@@ -170,7 +193,7 @@ impl Decoder {
             state.diagnostics.preprocess2_scored_candidates =
                 state.diagnostics.scored_candidates - before_scored;
         }
-        self.finish(state)
+        self.finish(state, prefer_crc)
     }
     fn rebuild_basis(&mut self, llr: &[f32; N], k: usize) -> Result<(), usize> {
         #[cfg(test)]
@@ -198,13 +221,84 @@ impl Decoder {
         }
         self.scorer.update(alpha, [0; 3]);
     }
-    fn finish(&mut self, state: SearchState) -> DecodeResult {
+    fn baseline_stops<const MIN: bool>(&self, state: &mut SearchState<MIN>) -> bool {
+        if MIN {
+            let Some(best) = &mut state.minimum else {
+                return false;
+            };
+            // Preserve the original zero-hard-error stop, including zero LLRs:
+            // a zero weighted distance alone is not sufficient.
+            if best.diff != [0; 3] {
+                return false;
+            }
+            if !self.config.require_crc {
+                return true;
+            }
+            let message =
+                extract_natural_message_with_crc(&state.received, &self.basis.natural_to_sys);
+            let crc_valid = verify_crc14_packed_message(message);
+            best.crc_valid = Some(crc_valid);
+            state.diagnostics.crc_checked_candidates += 1;
+            state.diagnostics.crc_failures += usize::from(!crc_valid);
+            crc_valid
+        } else {
+            state.best_any.as_ref().is_some_and(|b| {
+                b.hard_error_count == 0 && (!self.config.require_crc || b.crc_valid)
+            })
+        }
+    }
+
+    fn finish<const MIN: bool>(
+        &mut self,
+        mut state: SearchState<MIN>,
+        prefer_crc: bool,
+    ) -> DecodeResult {
         debug_assert_eq!(self.batch.len, 0);
+        #[cfg(test)]
+        {
+            self.last_trace = std::mem::take(&mut state.trace);
+        }
+        if MIN {
+            if let Some(best) = state.minimum {
+                let codeword = inverse_permute(
+                    &xor_delta(best.diff, state.received),
+                    &self.basis.sys_to_natural,
+                );
+                let message_with_crc = message_with_crc_from_codeword(&codeword);
+                let crc_valid = best.crc_valid.unwrap_or_else(|| {
+                    state.diagnostics.crc_checked_candidates += 1;
+                    let valid = verify_crc14_packed_message(message_with_crc);
+                    state.diagnostics.crc_failures += usize::from(!valid);
+                    valid
+                });
+                state.diagnostics.materialized_candidates += 1;
+                state.diagnostics.best_any_llr_distance = Some(best.distance);
+                state.diagnostics.best_any_crc_valid = crc_valid;
+                return DecodeResult {
+                    status: selected_status(
+                        state.diagnostics.candidate_cap_hit,
+                        crc_valid,
+                        self.config.require_crc,
+                    ),
+                    codeword,
+                    payload: extract_prefix(&codeword, 77),
+                    message_with_crc,
+                    llr_distance: best.distance,
+                    hard_error_count: popcount_codeword(best.diff),
+                    crc_valid,
+                    diagnostics: state.diagnostics,
+                    candidates: state.candidates,
+                };
+            }
+        }
+        if !prefer_crc {
+            state.best_valid = None;
+        }
         finalize(state, self.config.require_crc)
     }
-    fn main_order(
+    fn main_order<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         m: usize,
@@ -270,9 +364,9 @@ impl Decoder {
         }
     }
     #[inline(always)]
-    fn admit(
+    fn admit<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         diff: PackedCodeword,
         order: u8,
         positions: [u8; 6],
@@ -283,9 +377,9 @@ impl Decoder {
     }
     // Preprocessing counts examined patterns separately, including rejections.
     #[inline(always)]
-    fn reserve_and_score(
+    fn reserve_and_score<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         diff: PackedCodeword,
         order: u8,
         positions: [u8; 6],
@@ -300,12 +394,9 @@ impl Decoder {
         let batched = order != 0;
         if batched {
             let slot = self.batch.len;
-            self.batch.pending[slot] = PendingCandidate {
-                diff,
-                order,
-                positions,
-                num_positions: order,
-            };
+            if !MIN || cfg!(test) {
+                self.batch.pending[slot] = PendingCandidate { order, positions };
+            }
             self.batch.diffs[slot] = diff;
             self.batch.len += 1;
             if self.batch.len == 4 {
@@ -317,7 +408,7 @@ impl Decoder {
         self.select(state, diff, order, positions, distance);
     }
     #[inline(always)]
-    fn reserve(&self, state: &mut SearchState) -> bool {
+    fn reserve<const MIN: bool>(&self, state: &mut SearchState<MIN>) -> bool {
         if state.diagnostics.recoded_candidates >= self.config.max_recoded_candidates {
             state.diagnostics.candidate_cap_hit = true;
             return false;
@@ -326,7 +417,7 @@ impl Decoder {
         state.diagnostics.scored_candidates += 1;
         true
     }
-    fn flush_batch(&mut self, state: &mut SearchState) {
+    fn flush_batch<const MIN: bool>(&mut self, state: &mut SearchState<MIN>) {
         let len = self.batch.len;
         if len == 4 {
             let distances = self
@@ -334,10 +425,9 @@ impl Decoder {
                 .calculate_batch_weighted_hamming_f32_from_diffs_portable_simd(&self.batch.diffs);
             for (i, distance) in distances.into_iter().enumerate() {
                 let pending = self.batch.pending[i];
-                debug_assert_eq!(pending.num_positions, pending.order);
                 self.select(
                     state,
-                    pending.diff,
+                    self.batch.diffs[i],
                     pending.order,
                     pending.positions,
                     distance,
@@ -346,10 +436,10 @@ impl Decoder {
         } else {
             for i in 0..len {
                 let pending = self.batch.pending[i];
-                let distance = self.scorer.distance_from_diff(&pending.diff);
+                let distance = self.scorer.distance_from_diff(&self.batch.diffs[i]);
                 self.select(
                     state,
-                    pending.diff,
+                    self.batch.diffs[i],
                     pending.order,
                     pending.positions,
                     distance,
@@ -359,9 +449,9 @@ impl Decoder {
         self.batch.len = 0;
     }
     #[inline(always)]
-    fn select(
+    fn select<const MIN: bool>(
         &self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         diff: PackedCodeword,
         order: u8,
         positions: [u8; 6],
@@ -369,6 +459,16 @@ impl Decoder {
     ) {
         #[cfg(test)]
         state.trace.push((diff, order, positions));
+        if MIN {
+            if state.minimum.as_ref().is_none_or(|b| distance < b.distance) {
+                state.minimum = Some(MetricMinimum {
+                    diff,
+                    distance,
+                    crc_valid: None,
+                });
+            }
+            return;
+        }
         let diag = &mut state.diagnostics;
         if diag.best_any_llr_distance.is_none_or(|d| distance < d) {
             diag.best_any_llr_distance = Some(distance);
@@ -390,9 +490,9 @@ impl Decoder {
     // loop. The distance-only pruning above is inlined into batch selection.
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
-    fn materialize(
+    fn materialize<const MIN: bool>(
         &self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         diff: PackedCodeword,
         order: u8,
         positions: [u8; 6],
@@ -503,7 +603,7 @@ fn empty(status: Status, diagnostics: Diagnostics) -> DecodeResult {
         candidates: Vec::new(),
     }
 }
-fn finalize(state: SearchState, require_crc: bool) -> DecodeResult {
+fn finalize<const MIN: bool>(state: SearchState<MIN>, require_crc: bool) -> DecodeResult {
     let winner = state.best_valid.or(state.best_any);
     let Some(winner) = winner else {
         return empty(
@@ -515,13 +615,11 @@ fn finalize(state: SearchState, require_crc: bool) -> DecodeResult {
             state.diagnostics,
         );
     };
-    let status = if state.diagnostics.candidate_cap_hit {
-        Status::CandidateCapHit
-    } else if winner.crc_valid || !require_crc {
-        Status::Success
-    } else {
-        Status::NoValidCrc
-    };
+    let status = selected_status(
+        state.diagnostics.candidate_cap_hit,
+        winner.crc_valid,
+        require_crc,
+    );
     DecodeResult {
         status,
         codeword: winner.codeword,
@@ -532,6 +630,17 @@ fn finalize(state: SearchState, require_crc: bool) -> DecodeResult {
         crc_valid: winner.crc_valid,
         diagnostics: state.diagnostics,
         candidates: state.candidates,
+    }
+}
+
+// Acceptance is shared by both policies, after the winner has been selected.
+fn selected_status(candidate_cap_hit: bool, crc_valid: bool, require_crc: bool) -> Status {
+    if candidate_cap_hit {
+        Status::CandidateCapHit
+    } else if crc_valid || !require_crc {
+        Status::Success
+    } else {
+        Status::NoValidCrc
     }
 }
 

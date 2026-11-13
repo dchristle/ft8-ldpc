@@ -6,7 +6,7 @@ pub const CANDIDATE_POSITION_CAPACITY: usize = 6;
 pub enum Status {
     /// A candidate satisfies the configured success requirement.
     Success,
-    /// The search completed without a CRC-valid candidate when one was required.
+    /// The selected candidate failed CRC when CRC validity was required.
     NoValidCrc,
     /// The received ordering did not yield a full-rank generator basis.
     RankFailure,
@@ -38,7 +38,8 @@ pub struct DecodeResult {
     pub crc_valid: bool,
     /// Counters and best-any-candidate measurements from this decode.
     pub diagnostics: Diagnostics,
-    /// Collected candidates in selection order; empty when collection is disabled.
+    /// Collected candidates in CRC-preferred metric order, independent of the
+    /// selection policy; empty when collection is disabled.
     pub candidates: Vec<Candidate>,
 }
 /// One admitted codeword and the error pattern that produced it.
@@ -88,9 +89,9 @@ pub struct Diagnostics {
     pub main_enumerated_patterns: usize,
     /// Candidates scored by the main search, excluding the baseline.
     pub main_scored_candidates: usize,
-    /// Candidates converted from the systematic basis to result records.
+    /// Candidates reconstructed in natural order as result records.
     pub materialized_candidates: usize,
-    /// Candidates checked against the CRC.
+    /// Candidates checked against the CRC, including a cached baseline stopping check.
     pub crc_checked_candidates: usize,
     /// Patterns examined by first preprocessing.
     pub preprocess1_examined: usize,

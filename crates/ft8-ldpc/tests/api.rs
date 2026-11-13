@@ -17,6 +17,7 @@ fn configuration_fields_match_defaults() {
         max_recoded_candidates: 300_000,
         max_list_candidates: 32,
         collect_candidates: false,
+        selection_policy: SelectionPolicy::BestCrcValid,
         require_crc: true,
     };
     assert_eq!(config, Config::default());
@@ -38,6 +39,7 @@ fn every_public_type_is_send_sync_and_clone() {
     send_sync_clone::<Diagnostics>();
     send_sync_clone::<Status>();
     send_sync_clone::<RedundancyOrder>();
+    send_sync_clone::<SelectionPolicy>();
 }
 
 fn rejected(config: Config) -> ConfigError {

@@ -160,9 +160,9 @@ struct Step {
 }
 
 impl Decoder {
-    pub(super) fn second_preprocessing(
+    pub(super) fn second_preprocessing<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
     ) {
@@ -201,14 +201,14 @@ impl Decoder {
             }
             1 => self.pre2_walk_w1(state, &pairs, baseline, parity, k),
             2 => self.pre2_walk_w2(state, &pairs, baseline, parity, k),
-            3 if lazy && tau <= BUCKET_TAU_MAX => self.pre2_walk_w3_lazy::<true>(
+            3 if lazy && tau <= BUCKET_TAU_MAX => self.pre2_walk_w3_lazy::<true, MIN>(
                 state,
                 &pairs,
                 baseline,
                 parity[0] & low_mask(tau),
                 k,
             ),
-            3 if lazy => self.pre2_walk_w3_lazy::<false>(
+            3 if lazy => self.pre2_walk_w3_lazy::<false, MIN>(
                 state,
                 &pairs,
                 baseline,
@@ -221,9 +221,9 @@ impl Decoder {
         self.pairs = pairs;
     }
 
-    fn pre2_walk_w1(
+    fn pre2_walk_w1<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         parity: PackedRedundancy,
@@ -243,9 +243,9 @@ impl Decoder {
         }
     }
 
-    fn pre2_walk_w2(
+    fn pre2_walk_w2<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         parity: PackedRedundancy,
@@ -269,9 +269,9 @@ impl Decoder {
         }
     }
 
-    fn pre2_walk_w3_general(
+    fn pre2_walk_w3_general<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         parity: PackedRedundancy,
@@ -302,9 +302,9 @@ impl Decoder {
     /// Steps of weight 4 (or any weight, in principle) through the generic
     /// enumerator, starting at position 2 because steps with s0 < 2 have no
     /// pair below them.
-    fn pre2_walk_generic(
+    fn pre2_walk_generic<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         parity: PackedRedundancy,
@@ -332,9 +332,9 @@ impl Decoder {
     }
 
     /// Probes every mask in list order using the key from the carried parity.
-    fn pre2_general_step(
+    fn pre2_general_step<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         w: usize,
@@ -366,9 +366,9 @@ impl Decoder {
 
     /// Walks weight-three steps with one-word keys, building each diff only at its first match.
     #[inline(never)]
-    fn pre2_walk_w3_lazy<const BUCKET: bool>(
+    fn pre2_walk_w3_lazy<const BUCKET: bool, const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         baseline_key: u64,
@@ -425,9 +425,9 @@ impl Decoder {
     /// it from the baseline and the step positions.
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
-    fn pre2_admit_range(
+    fn pre2_admit_range<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         pairs: &PairWorkspace,
         baseline: PackedCodeword,
         (first, end): (usize, usize),

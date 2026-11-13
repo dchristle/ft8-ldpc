@@ -25,9 +25,9 @@ impl Decoder {
     // Orders 2 and 3 check the flag before a block and every nonempty-block
     // lane. Order 2 carries its leading diff; order 3 rebuilds per survivor.
     #[inline(always)]
-    fn pre1_vector_block<const M: usize, const LANES: usize>(
+    fn pre1_vector_block<const M: usize, const LANES: usize, const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         leading: [u8; 6],
         p: u64,
@@ -72,9 +72,9 @@ impl Decoder {
     // Keep each traversal separate from decode: this limits register pressure
     // and leaves baseline/position construction behind the cold survivor branch.
     #[inline(never)]
-    pub(in crate::wu2007::root) fn pre1_order2_vector(
+    pub(in crate::wu2007::root) fn pre1_order2_vector<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,
@@ -88,25 +88,25 @@ impl Decoder {
             let leading = [i0 as u8, 0, 0, 0, 0, 0];
             let mut j = i0 + 1;
             while j + 4 <= k {
-                if !self
-                    .pre1_vector_block::<2, 4>(state, d0, leading, p0, j, theta, &mut ex, &mut rej)
-                {
+                if !self.pre1_vector_block::<2, 4, MIN>(
+                    state, d0, leading, p0, j, theta, &mut ex, &mut rej,
+                ) {
                     break 'stage;
                 }
                 j += 4;
             }
             if j + 2 <= k {
-                if !self
-                    .pre1_vector_block::<2, 2>(state, d0, leading, p0, j, theta, &mut ex, &mut rej)
-                {
+                if !self.pre1_vector_block::<2, 2, MIN>(
+                    state, d0, leading, p0, j, theta, &mut ex, &mut rej,
+                ) {
                     break 'stage;
                 }
                 j += 2;
             }
             if j < k {
-                if !self
-                    .pre1_vector_block::<2, 1>(state, d0, leading, p0, j, theta, &mut ex, &mut rej)
-                {
+                if !self.pre1_vector_block::<2, 1, MIN>(
+                    state, d0, leading, p0, j, theta, &mut ex, &mut rej,
+                ) {
                     break 'stage;
                 }
             }
@@ -115,9 +115,9 @@ impl Decoder {
     }
 
     #[inline(never)]
-    pub(in crate::wu2007::root) fn pre1_order3_vector(
+    pub(in crate::wu2007::root) fn pre1_order3_vector<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,
@@ -132,7 +132,7 @@ impl Decoder {
                 let leading = [i0 as u8, i1 as u8, 0, 0, 0, 0];
                 let mut j = i1 + 1;
                 while j + 4 <= k {
-                    if !self.pre1_vector_block::<3, 4>(
+                    if !self.pre1_vector_block::<3, 4, MIN>(
                         state, baseline, leading, p01, j, theta, &mut ex, &mut rej,
                     ) {
                         break 'stage;
@@ -140,7 +140,7 @@ impl Decoder {
                     j += 4;
                 }
                 while j < k {
-                    if !self.pre1_vector_block::<3, 1>(
+                    if !self.pre1_vector_block::<3, 1, MIN>(
                         state, baseline, leading, p01, j, theta, &mut ex, &mut rej,
                     ) {
                         break 'stage;
@@ -153,9 +153,9 @@ impl Decoder {
     }
 
     #[inline(always)]
-    fn pre1_order4_block<const LANES: usize>(
+    fn pre1_order4_block<const LANES: usize, const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         leading: [u8; 6],
         p: u64,
@@ -197,9 +197,9 @@ impl Decoder {
     }
 
     #[inline(never)]
-    pub(in crate::wu2007::root) fn pre1_order4_vector(
+    pub(in crate::wu2007::root) fn pre1_order4_vector<const MIN: bool>(
         &mut self,
-        state: &mut SearchState,
+        state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
         b: u64,
@@ -216,7 +216,7 @@ impl Decoder {
                     let leading = [i0 as u8, i1 as u8, i2 as u8, 0, 0, 0];
                     let mut j = i2 + 1;
                     while j + 4 <= k {
-                        if !self.pre1_order4_block::<4>(
+                        if !self.pre1_order4_block::<4, MIN>(
                             state, baseline, leading, p012, j, theta, &mut ex, &mut rej,
                         ) {
                             break 'stage;
@@ -224,7 +224,7 @@ impl Decoder {
                         j += 4;
                     }
                     if j + 2 <= k {
-                        if !self.pre1_order4_block::<2>(
+                        if !self.pre1_order4_block::<2, MIN>(
                             state, baseline, leading, p012, j, theta, &mut ex, &mut rej,
                         ) {
                             break 'stage;
@@ -232,7 +232,7 @@ impl Decoder {
                         j += 2;
                     }
                     if j < k {
-                        if !self.pre1_order4_block::<1>(
+                        if !self.pre1_order4_block::<1, MIN>(
                             state, baseline, leading, p012, j, theta, &mut ex, &mut rej,
                         ) {
                             break 'stage;
