@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["crates/ft8-ldpc-core", "crates/ft8-ldpc"]
+
+[workspace.package]
+license = "MIT OR Apache-2.0"
+
+# The smoke and oracle tests exercise optimized kernels.
+[profile.test]
+opt-level = 3

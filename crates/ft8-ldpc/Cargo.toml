@@ -1,0 +1,43 @@
+[package]
+name = "ft8-ldpc"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+
+[features]
+default = ["wu2007", "fast-min-sum", "pb-osd"]
+wu2007 = []
+fast-min-sum = []
+pb-osd = []
+
+[dependencies]
+ft8-ldpc-core = { path = "../ft8-ldpc-core" }
+
+[dev-dependencies]
+libm = "0.2.8"
+rand = "0.9.2"
+rand_distr = "0.5.1"
+
+[[test]]
+name = "allocations"
+required-features = ["wu2007"]
+
+[[test]]
+name = "api"
+required-features = ["wu2007"]
+
+[[test]]
+name = "behavior"
+required-features = ["wu2007"]
+
+[[test]]
+name = "vectors"
+required-features = ["wu2007"]
+
+[[example]]
+name = "fast_min_sum_decode_noisy_codeword"
+required-features = ["fast-min-sum"]
+
+[[example]]
+name = "pb_osd_decode_noisy_codeword"
+required-features = ["pb-osd"]

@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel"
+          rustup show
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Test (release)
+        run: cargo test --workspace --release --locked
+      - name: Each decoder alone
+        run: |
+          cargo check -p ft8-ldpc --no-default-features --locked
+          for f in wu2007 pb-osd fast-min-sum; do
+            cargo test -p ft8-ldpc --no-default-features --features "$f" --locked
+          done
