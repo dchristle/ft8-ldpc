@@ -293,6 +293,7 @@ fn per_candidate_path_matches_the_batch() {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Class {
+    Lane8(usize),
     Lane4(usize),
     Lane2(usize),
     One,
@@ -300,12 +301,14 @@ enum Class {
     Last,
 }
 
-/// Classifies the survivor's position within the four-, two- or one-lane blocks.
+/// Classifies the survivor's position within the eight-, four-, two- or one-lane blocks.
 fn class_of(positions: &[u8; 6], m: usize, k: usize) -> Class {
     let start = positions[m - 2] as usize + 1;
     let length = k - start;
     let offset = positions[m - 1] as usize - start;
-    if offset < 4 * (length / 4) {
+    if offset < 8 * (length / 8) {
+        Class::Lane8(offset % 8)
+    } else if offset < 4 * (length / 4) {
         Class::Lane4(offset % 4)
     } else {
         let rest = offset - 4 * (length / 4);
@@ -422,6 +425,12 @@ fn preprocessing_kernel_smoke(m: usize, ks: &[usize], seed: u64) {
         none >= 1 && few >= 1 && all >= 1 && below >= 1 && equal >= 1 && beyond >= 1,
         "m {m}: none {none}, few {few}, all {all}, below {below}, equal {equal}"
     );
+    for lane in 0..8 {
+        assert!(
+            classes.contains(&Class::Lane8(lane)),
+            "m {m}: lane {lane} of an 8-block not reached"
+        );
+    }
     for lane in 0..4 {
         assert!(
             classes.contains(&Class::Lane4(lane)),
@@ -507,6 +516,20 @@ fn order_four_kernel_matches_its_reference() {
     let ks = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 12, 11, 10, 77, 91];
     preprocessing_kernel_smoke(4, &ks, 0x7501);
     preprocessing_decode_smoke(3);
+}
+
+#[test]
+fn eight_lane_blocks_preserve_caps_at_block_and_tail_boundaries() {
+    for m in 2..=4 {
+        // The first row contains two full blocks and one tail pattern.
+        let k = m + 16;
+        let make = || synthetic(0x7808 + m as u64, k, 512, kernel_config(m));
+        for cap in [0, 1, 7, 8, 9, 15, 16, 17, 18] {
+            let a = kernel_run(&mut make(), m, 0, m, cap, false);
+            let b = kernel_run(&mut make(), m, 0, m, cap, true);
+            assert_eq!(a, b, "m {m}, cap {cap}");
+        }
+    }
 }
 
 /// Compares dedicated main-search loops of orders 1 to 3 with the generic enumerator.

@@ -1,4 +1,4 @@
-//! Four-lane first-preprocessing kernels.
+//! Eight-lane first-preprocessing kernels with smaller tail blocks.
 use super::*;
 
 #[inline(always)]
@@ -87,7 +87,15 @@ impl Decoder {
             let d0 = xor_delta(baseline, self.basis.encoded_basis_deltas[i0]);
             let leading = [i0 as u8, 0, 0, 0, 0, 0];
             let mut j = i0 + 1;
-            while j + 4 <= k {
+            while j + 8 <= k {
+                if !self.pre1_vector_block::<2, 8, MIN>(
+                    state, d0, leading, p0, j, theta, &mut ex, &mut rej,
+                ) {
+                    break 'stage;
+                }
+                j += 8;
+            }
+            if j + 4 <= k {
                 if !self.pre1_vector_block::<2, 4, MIN>(
                     state, d0, leading, p0, j, theta, &mut ex, &mut rej,
                 ) {
@@ -131,7 +139,15 @@ impl Decoder {
                 let p01 = p0 ^ self.prefix_words[i1];
                 let leading = [i0 as u8, i1 as u8, 0, 0, 0, 0];
                 let mut j = i1 + 1;
-                while j + 4 <= k {
+                while j + 8 <= k {
+                    if !self.pre1_vector_block::<3, 8, MIN>(
+                        state, baseline, leading, p01, j, theta, &mut ex, &mut rej,
+                    ) {
+                        break 'stage;
+                    }
+                    j += 8;
+                }
+                if j + 4 <= k {
                     if !self.pre1_vector_block::<3, 4, MIN>(
                         state, baseline, leading, p01, j, theta, &mut ex, &mut rej,
                     ) {
@@ -215,7 +231,15 @@ impl Decoder {
                     let p012 = p01 ^ self.prefix_words[i2];
                     let leading = [i0 as u8, i1 as u8, i2 as u8, 0, 0, 0];
                     let mut j = i2 + 1;
-                    while j + 4 <= k {
+                    while j + 8 <= k {
+                        if !self.pre1_order4_block::<8, MIN>(
+                            state, baseline, leading, p012, j, theta, &mut ex, &mut rej,
+                        ) {
+                            break 'stage;
+                        }
+                        j += 8;
+                    }
+                    if j + 4 <= k {
                         if !self.pre1_order4_block::<4, MIN>(
                             state, baseline, leading, p012, j, theta, &mut ex, &mut rej,
                         ) {
@@ -253,14 +277,27 @@ mod tests {
         for m in [2, 3, 4] {
             for count in 0..=64 {
                 let p = low_mask(count);
-                let x = [0, !0, 0x5555_5555_5555_5555, 0xaaaa_aaaa_aaaa_aaaa];
+                let x = [
+                    0,
+                    !0,
+                    0x5555_5555_5555_5555,
+                    0xaaaa_aaaa_aaaa_aaaa,
+                    1,
+                    1 << 63,
+                    u64::MAX >> 1,
+                    u64::MAX ^ 1,
+                ];
                 for theta in (0..=70).chain([usize::MAX]) {
                     let expected = x.iter().enumerate().fold(0, |mask, (lane, x)| {
                         mask | (u8::from(m + (p ^ x).count_ones() as usize <= theta) << lane)
                     });
                     macro_rules! check {
                         ($m:literal) => {{
-                            assert_eq!(survivors::<$m, 4>(p, &x, theta), expected);
+                            assert_eq!(survivors::<$m, 8>(p, &x, theta), expected);
+                            assert_eq!(
+                                survivors::<$m, 4>(p, &[x[0], x[1], x[2], x[3]], theta),
+                                expected & 15
+                            );
                             assert_eq!(survivors::<$m, 2>(p, &[x[0], x[1]], theta), expected & 3);
                             assert_eq!(survivors::<$m, 1>(p, &[x[0]], theta), expected & 1);
                         }};
@@ -275,49 +312,49 @@ mod tests {
         }
     }
 
-    /// Compares the 4-lane and 2-lane helpers with the scalar reference for every
+    /// Compares the block helpers with the scalar reference for every
     /// θ from 0 to 70 and `usize::MAX`, each m, and each lane count.
     #[test]
     fn survivor_masks_match_the_scalar_reference() {
         use crate::wu2007::root::search::reference::survivor_mask_reference;
         let mut rng = crate::wu2007::scoring::test_inputs::SplitMix64(0x7700);
-        let mut inputs: Vec<(u64, [u64; 4])> = vec![
-            (0, [0; 4]),
-            (!0, [!0; 4]),
-            (0x0123_4567_89ab_cdef, [0x0123_4567_89ab_cdef; 4]),
-            (0, [0, 1, 3, 7]),
-            (0, [0, !0, 0x5555_5555_5555_5555, 0xff]),
+        let mut inputs: Vec<(u64, [u64; 8])> = vec![
+            (0, [0; 8]),
+            (!0, [!0; 8]),
+            (0x0123_4567_89ab_cdef, [0x0123_4567_89ab_cdef; 8]),
+            (0, [0, 1, 3, 7, 15, 31, 63, 127]),
+            (0, [0, !0, 0x5555_5555_5555_5555, 0xff, 0, !0, 0xaa, 0xf]),
         ];
+        for lane in 0..8 {
+            let p = rng.next();
+            let mut x = [p ^ 1; 8];
+            x[lane] = p;
+            inputs.push((p, x));
+        }
         for flips in 0..=8 {
             let p = rng.next();
             let lane = |rng: &mut crate::wu2007::scoring::test_inputs::SplitMix64| {
                 (0..flips).fold(p, |x, _| x ^ (1 << rng.below(64)))
             };
-            inputs.push((
-                p,
-                [
-                    lane(&mut rng),
-                    lane(&mut rng),
-                    lane(&mut rng),
-                    lane(&mut rng),
-                ],
-            ));
+            inputs.push((p, std::array::from_fn(|_| lane(&mut rng))));
         }
         for _ in 0..6 {
-            inputs.push((rng.next(), [rng.next(), rng.next(), rng.next(), rng.next()]));
+            inputs.push((rng.next(), std::array::from_fn(|_| rng.next())));
         }
         let (mut empty, mut full, mut mixed) = (false, false, false);
         for (p, x) in inputs {
             for theta in (0..=70).chain([usize::MAX]) {
                 macro_rules! check {
                     ($m:literal) => {{
-                        let four = survivors::<$m, 4>(p, &x, theta);
-                        assert_eq!(four, survivor_mask_reference(p, &x, $m, theta));
+                        let eight = survivors::<$m, 8>(p, &x, theta);
+                        assert_eq!(eight, survivor_mask_reference(p, &x, $m, theta));
+                        let four = survivors::<$m, 4>(p, &[x[0], x[1], x[2], x[3]], theta);
+                        assert_eq!(four, survivor_mask_reference(p, &x[..4], $m, theta));
                         let two = survivors::<$m, 2>(p, &[x[0], x[1]], theta);
                         assert_eq!(two, survivor_mask_reference(p, &x[..2], $m, theta));
-                        empty |= four == 0;
-                        full |= four == 0b1111;
-                        mixed |= four != 0 && four != 0b1111;
+                        empty |= eight == 0;
+                        full |= eight == u8::MAX;
+                        mixed |= eight != 0 && eight != u8::MAX;
                     }};
                 }
                 check!(2);
