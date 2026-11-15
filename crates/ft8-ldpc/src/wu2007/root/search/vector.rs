@@ -1,4 +1,5 @@
 //! Eight-lane first-preprocessing kernels with smaller tail blocks.
+use super::bound::InformationBound;
 use super::*;
 
 #[inline(always)]
@@ -66,7 +67,9 @@ impl Decoder {
             };
             self.reserve_and_score(state, diff, M as u8, positions);
         }
-        true
+        // A refusal in the final lane must stop before the next pair can
+        // skip a branch and count it as pruned beyond the admission boundary.
+        !state.diagnostics.candidate_cap_hit
     }
 
     // Keep each traversal separate from decode: this limits register pressure
@@ -122,7 +125,6 @@ impl Decoder {
         Self::pre1_counts(state, ex, rej);
     }
 
-    #[inline(never)]
     pub(in crate::wu2007::root) fn pre1_order3_vector<const MIN: bool>(
         &mut self,
         state: &mut SearchState<MIN>,
@@ -131,11 +133,29 @@ impl Decoder {
         b: u64,
         theta: usize,
     ) {
+        self.pre1_order3_bounded::<MIN, false>(state, baseline, k, b, theta, None);
+    }
+
+    #[inline(never)]
+    pub(super) fn pre1_order3_bounded<const MIN: bool, const BOUND: bool>(
+        &mut self,
+        state: &mut SearchState<MIN>,
+        baseline: PackedCodeword,
+        k: usize,
+        b: u64,
+        theta: usize,
+        bound: Option<&InformationBound>,
+    ) {
         assert!(k <= self.prefix_words.len());
         let (mut ex, mut rej) = (0, 0);
         'stage: for i0 in 0..k - 2 {
             let p0 = b ^ self.prefix_words[i0];
             for i1 in i0 + 1..k - 1 {
+                if BOUND && bound.unwrap().rejects(i0, i1) {
+                    let remaining = k - i1 - 1;
+                    state.diagnostics.preprocess1_metric_pruned_patterns += remaining;
+                    continue;
+                }
                 let p01 = p0 ^ self.prefix_words[i1];
                 let leading = [i0 as u8, i1 as u8, 0, 0, 0, 0];
                 let mut j = i1 + 1;
@@ -212,7 +232,6 @@ impl Decoder {
         true
     }
 
-    #[inline(never)]
     pub(in crate::wu2007::root) fn pre1_order4_vector<const MIN: bool>(
         &mut self,
         state: &mut SearchState<MIN>,
@@ -221,11 +240,30 @@ impl Decoder {
         b: u64,
         theta: usize,
     ) {
+        self.pre1_order4_bounded::<MIN, false>(state, baseline, k, b, theta, None);
+    }
+
+    #[inline(never)]
+    pub(super) fn pre1_order4_bounded<const MIN: bool, const BOUND: bool>(
+        &mut self,
+        state: &mut SearchState<MIN>,
+        baseline: PackedCodeword,
+        k: usize,
+        b: u64,
+        theta: usize,
+        bound: Option<&InformationBound>,
+    ) {
         assert!(k <= self.prefix_words.len());
         let (mut ex, mut rej) = (0, 0);
         'stage: for i0 in 0..k - 3 {
             let p0 = b ^ self.prefix_words[i0];
             for i1 in i0 + 1..k - 2 {
+                if BOUND && bound.unwrap().rejects(i0, i1) {
+                    let remaining = k - i1 - 1;
+                    state.diagnostics.preprocess1_metric_pruned_patterns +=
+                        remaining * (remaining - 1) / 2;
+                    continue;
+                }
                 let p01 = p0 ^ self.prefix_words[i1];
                 for i2 in i1 + 1..k - 1 {
                     let p012 = p01 ^ self.prefix_words[i2];

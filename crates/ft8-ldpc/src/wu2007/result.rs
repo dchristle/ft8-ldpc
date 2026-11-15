@@ -97,6 +97,10 @@ pub struct Diagnostics {
     pub preprocess1_examined: usize,
     /// Patterns rejected by the first-preprocessing prefix filter.
     pub preprocess1_rejects: usize,
+    /// Patterns skipped by the information-distance bound before prefix testing.
+    /// These consume no admission slots and are excluded from examined counters.
+    /// Saved admission slots remain available to later candidates and stages.
+    pub preprocess1_metric_pruned_patterns: usize,
     /// Candidates scored by first preprocessing.
     pub preprocess1_scored_candidates: usize,
     /// Second-preprocessing patterns submitted for admission, including a cap-limited attempt.

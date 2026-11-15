@@ -35,6 +35,9 @@ pub struct Config {
     /// Values above the redundancy length are clamped; ignored when the stage is disabled.
     pub second_preprocessing_prefix_len: Option<usize>,
     /// Maximum admitted candidates; zero produces an empty result with `Status::CandidateCapHit`.
+    /// Metric-pruned first-preprocessing branches consume no budget. Under
+    /// `MinMetricThenCrc` without collection, this can reach later candidates
+    /// than an unpruned search using the same cap and can change its winner.
     pub max_recoded_candidates: usize,
     /// Maximum collected candidates; zero keeps the list empty without changing selection.
     pub max_list_candidates: usize,

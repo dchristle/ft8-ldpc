@@ -47,12 +47,40 @@ fn check_pair(
 ) -> (DecodeResult, DecodeResult) {
     let a = best.decode(llr);
     let b = min.decode(llr);
-    assert_eq!(
-        best.last_trace, min.last_trace,
-        "admission order and patterns"
-    );
     assert_eq!(best.basis.sys_to_natural, min.basis.sys_to_natural);
-    assert_eq!(search_counts(&a.diagnostics), search_counts(&b.diagnostics));
+    if a.diagnostics.candidate_cap_hit && b.diagnostics.preprocess1_metric_pruned_patterns > 0 {
+        // Freeing budget may reach candidates absent from the old capped
+        // sequence. Check those cases against scalar pruned enumeration.
+        let mut oracle = Decoder::new(min.config.clone()).unwrap();
+        oracle.reference.pre1_bound = true;
+        let expected = oracle.decode(llr);
+        assert!(oracle.last_trace == min.last_trace);
+        assert_eq!(format!("{b:?}"), format!("{expected:?}"));
+        return (a, b);
+    }
+    if b.diagnostics.preprocess1_metric_pruned_patterns == 0 {
+        assert!(
+            best.last_trace == min.last_trace,
+            "admission order and patterns"
+        );
+        assert_eq!(search_counts(&a.diagnostics), search_counts(&b.diagnostics));
+    } else {
+        // Pruning may remove losers, but cannot reorder the remaining scores.
+        let mut retained = min.last_trace.iter().peekable();
+        for entry in &best.last_trace {
+            if retained.peek() == Some(&entry) {
+                retained.next();
+            }
+        }
+        assert!(
+            retained.next().is_none(),
+            "scored sequence must be a subsequence"
+        );
+        assert_eq!(
+            a.diagnostics.candidate_cap_hit,
+            b.diagnostics.candidate_cap_hit
+        );
+    }
     let mut first = None;
     for &(diff, _, _) in &best.last_trace {
         let score = best.scorer.distance_from_diff(&diff);
@@ -325,6 +353,111 @@ fn basis_syndromes_preserve_direct_crc_selection_and_diagnostics() {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn branch_pruning_matches_scalar_budget_semantics_across_stages_and_reuse() {
+    let mut rng = SplitMix64(0xb0_0d_2007);
+    let frames = [
+        awgn(&mut rng, 0.0),
+        awgn(&mut rng, 4.0),
+        awgn(&mut rng, 6.0),
+    ];
+    let mut pruned = 0;
+    for cascade_bits in [0, 7, 14] {
+        for search_order in [2, 3] {
+            for (second, prefix, cap) in [
+                (false, None, 300_000),
+                (false, Some(0), 130_000),
+                (false, Some(64), usize::MAX),
+                (false, Some(65), 150_000),
+                (true, None, 150_000),
+            ] {
+                let config = Config {
+                    cascade_bits,
+                    search_order,
+                    selection_policy: SelectionPolicy::MinMetricThenCrc,
+                    enable_second_preprocessing: second,
+                    second_preprocessing_prefix_len: Some(16),
+                    parity_prefix_len: prefix,
+                    max_recoded_candidates: cap,
+                    ..Config::default()
+                };
+                let mut optimized = Decoder::new(config.clone()).unwrap();
+                let mut reference = Decoder::new(config).unwrap();
+                reference.reference.pre1_bound = true;
+                for llr in &frames {
+                    let a = optimized.decode(llr);
+                    let b = reference.decode(llr);
+                    assert!(optimized.last_trace == reference.last_trace);
+                    assert_eq!(format!("{a:?}"), format!("{b:?}"));
+                    assert_eq!(a.codeword, b.codeword);
+                    assert_eq!(a.payload, b.payload);
+                    assert_eq!(a.message_with_crc, b.message_with_crc);
+                    assert_eq!(a.llr_distance.to_bits(), b.llr_distance.to_bits());
+                    assert_eq!(a.hard_error_count, b.hard_error_count);
+                    assert_eq!(a.crc_valid, b.crc_valid);
+                    assert_eq!(a.status, b.status);
+                    assert_eq!(
+                        a.diagnostics.candidate_cap_hit,
+                        b.diagnostics.candidate_cap_hit
+                    );
+                    assert_eq!(
+                        a.diagnostics.crc_checked_candidates,
+                        b.diagnostics.crc_checked_candidates
+                    );
+                    if second || a.diagnostics.candidate_cap_hit {
+                        assert_eq!(
+                            a.diagnostics.recoded_candidates,
+                            b.diagnostics.recoded_candidates
+                        );
+                        assert_eq!(
+                            a.diagnostics.preprocess2_enumerated_patterns,
+                            b.diagnostics.preprocess2_enumerated_patterns
+                        );
+                        assert_eq!(
+                            a.diagnostics.preprocess2_scored_candidates,
+                            b.diagnostics.preprocess2_scored_candidates
+                        );
+                    }
+                    pruned += a.diagnostics.preprocess1_metric_pruned_patterns;
+                }
+            }
+        }
+    }
+    assert!(pruned > 0);
+}
+
+#[test]
+fn uncapped_pruning_preserves_the_unpruned_winner_for_both_orders() {
+    let mut rng = SplitMix64(0xb0_0d_2008);
+    let frames = [
+        awgn(&mut rng, 0.0),
+        awgn(&mut rng, 2.0),
+        awgn(&mut rng, 4.0),
+    ];
+    for search_order in [2, 3] {
+        for cascade_bits in [0, 7, 14] {
+            let config = Config {
+                search_order,
+                cascade_bits,
+                selection_policy: SelectionPolicy::MinMetricThenCrc,
+                max_recoded_candidates: usize::MAX,
+                ..Config::default()
+            };
+            let mut optimized = Decoder::new(config.clone()).unwrap();
+            let mut unpruned = Decoder::new(config).unwrap();
+            unpruned.reference.pre1 = true;
+            for llr in &frames {
+                let a = optimized.decode(llr);
+                let b = unpruned.decode(llr);
+                assert_eq!(a.codeword, b.codeword);
+                assert_eq!(a.llr_distance.to_bits(), b.llr_distance.to_bits());
+                assert_eq!(a.status, b.status);
+                assert_eq!(a.crc_valid, b.crc_valid);
             }
         }
     }

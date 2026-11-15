@@ -11,6 +11,42 @@ pub(crate) fn survivor_mask_reference(p: u64, x: &[u64], m: usize, theta: usize)
 }
 
 impl Decoder {
+    /// Independent per-pattern traversal for the pruned admission sequence.
+    /// Bounds are tested separately against the actual scorer; here the oracle
+    /// checks traversal, prefix filtering, budget use and strict tie ordering.
+    pub(in crate::wu2007::root) fn pre1_bound_reference<const MIN: bool>(
+        &mut self,
+        state: &mut SearchState<MIN>,
+        baseline: PackedCodeword,
+        k: usize,
+        m: usize,
+        t: usize,
+        theta: usize,
+        alpha: &[f32; N],
+    ) {
+        let bound = state
+            .minimum
+            .and_then(|minimum| bound::InformationBound::new(&alpha[..k], m, minimum.distance));
+        enumerate(k, m, |positions| {
+            if state.diagnostics.candidate_cap_hit {
+                return false;
+            }
+            if bound
+                .as_ref()
+                .is_some_and(|bound| bound.rejects(positions[0] as usize, positions[1] as usize))
+            {
+                state.diagnostics.preprocess1_metric_pruned_patterns += 1;
+                return true;
+            }
+            let diff = self.diff_from_positions(baseline, &positions[..m]);
+            let q = extract_slice(&diff, k, t)[0].count_ones();
+            if !Self::reference_examine(state, m, q, theta) {
+                self.reserve_and_score(state, diff, m as u8, positions);
+            }
+            !state.diagnostics.candidate_cap_hit
+        });
+    }
+
     /// Counts one examined pattern and returns whether it is rejected.
     fn reference_examine<const MIN: bool>(
         state: &mut SearchState<MIN>,

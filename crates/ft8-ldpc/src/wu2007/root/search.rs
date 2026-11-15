@@ -1,4 +1,5 @@
 //! Main-search and first-preprocessing kernels.
+mod bound;
 #[cfg(test)]
 pub(super) mod reference;
 mod vector;
@@ -414,6 +415,7 @@ impl Decoder {
         state: &mut SearchState<MIN>,
         baseline: PackedCodeword,
         k: usize,
+        alpha: &[f32; N],
     ) {
         let r = N - k;
         let t = self.config.parity_prefix_len.unwrap_or(r / 2).min(r);
@@ -432,6 +434,40 @@ impl Decoder {
             if self.reference.pre1 && (2..=4).contains(&m) {
                 self.pre1_reference(state, baseline, k, m, b[0], theta);
                 return;
+            }
+            #[cfg(test)]
+            if MIN && self.reference.pre1_bound && (m == 3 || m == 4) {
+                self.pre1_bound_reference(state, baseline, k, m, t, theta, alpha);
+                return;
+            }
+            // Pruned branches cannot improve the incumbent and consume no
+            // admission budget, including when a later stage shares the cap.
+            if MIN && (m == 3 || m == 4) {
+                if let Some(bound) = state.minimum.and_then(|minimum| {
+                    bound::InformationBound::new(&alpha[..k], m, minimum.distance)
+                        .filter(|bound| bound.can_prune())
+                }) {
+                    match m {
+                        3 => self.pre1_order3_bounded::<MIN, true>(
+                            state,
+                            baseline,
+                            k,
+                            b[0],
+                            theta,
+                            Some(&bound),
+                        ),
+                        4 => self.pre1_order4_bounded::<MIN, true>(
+                            state,
+                            baseline,
+                            k,
+                            b[0],
+                            theta,
+                            Some(&bound),
+                        ),
+                        _ => unreachable!(),
+                    }
+                    return;
+                }
             }
             match m {
                 1 => self.pre1_order1(state, baseline, k, b[0], theta),

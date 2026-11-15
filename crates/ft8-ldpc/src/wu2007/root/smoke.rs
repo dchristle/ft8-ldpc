@@ -822,6 +822,7 @@ fn all_references_together_match_the_optimized_decoder() {
         basis: true,
         main: true,
         pre1: true,
+        pre1_bound: false,
         list: true,
         crc: true,
         pre2_box_free: false,

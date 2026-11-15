@@ -35,6 +35,8 @@ pub(crate) struct ReferenceStages {
     pub basis: bool,
     pub main: bool,
     pub pre1: bool,
+    /// Scalar enumeration with the same branch bound and admission budget.
+    pub pre1_bound: bool,
     pub list: bool,
     /// Check each candidate directly instead of using basis syndromes.
     pub crc: bool,
@@ -183,7 +185,7 @@ impl Decoder {
             state.diagnostics.scored_candidates - before_scored;
         if self.config.enable_first_preprocessing && !state.diagnostics.candidate_cap_hit {
             let before_scored = state.diagnostics.scored_candidates;
-            self.first_preprocessing(&mut state, baseline, k);
+            self.first_preprocessing(&mut state, baseline, k, &alpha);
             self.flush_batch(&mut state);
             state.diagnostics.preprocess1_scored_candidates =
                 state.diagnostics.scored_candidates - before_scored;
