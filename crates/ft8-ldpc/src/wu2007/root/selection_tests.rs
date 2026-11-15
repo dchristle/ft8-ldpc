@@ -206,7 +206,7 @@ fn policies_preserve_all_search_stages_caps_and_collection_contract() {
                         enable_second_preprocessing: second,
                         parity_prefix_len: Some(prefix),
                         second_preprocessing_prefix_len: Some(tau),
-                        max_recoded_candidates: cap,
+                        max_recoded_candidates: Some(cap),
                         collect_candidates: collect,
                         max_list_candidates: if cap == 7 { 0 } else { 8 },
                         require_crc: cap % 2 == 0,
@@ -224,7 +224,7 @@ fn policies_preserve_all_search_stages_caps_and_collection_contract() {
             search_order: order,
             enable_second_preprocessing: true,
             second_preprocessing_prefix_len: Some(tau),
-            max_recoded_candidates: 150_000,
+            max_recoded_candidates: Some(150_000),
             ..Config::default()
         });
         let (_, r) = check_pair(&mut a, &mut b, &llr);
@@ -334,7 +334,7 @@ fn basis_syndromes_preserve_direct_crc_selection_and_diagnostics() {
                             search_order: order,
                             collect_candidates,
                             selection_policy,
-                            max_recoded_candidates: cap,
+                            max_recoded_candidates: Some(cap),
                             max_list_candidates: if cap == 97 { 0 } else { 4 },
                             enable_second_preprocessing: order <= 2,
                             parity_prefix_len: Some(65),
@@ -383,7 +383,7 @@ fn branch_pruning_matches_scalar_budget_semantics_across_stages_and_reuse() {
                     enable_second_preprocessing: second,
                     second_preprocessing_prefix_len: Some(16),
                     parity_prefix_len: prefix,
-                    max_recoded_candidates: cap,
+                    max_recoded_candidates: Some(cap),
                     ..Config::default()
                 };
                 let mut optimized = Decoder::new(config.clone()).unwrap();
@@ -445,7 +445,7 @@ fn uncapped_pruning_preserves_the_unpruned_winner_for_both_orders() {
                 search_order,
                 cascade_bits,
                 selection_policy: SelectionPolicy::MinMetricThenCrc,
-                max_recoded_candidates: usize::MAX,
+                max_recoded_candidates: None,
                 ..Config::default()
             };
             let mut optimized = Decoder::new(config.clone()).unwrap();

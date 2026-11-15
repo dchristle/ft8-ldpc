@@ -34,11 +34,12 @@ pub struct Config {
     /// Second-preprocessing prefix length; `None` derives it from the message length and order.
     /// Values above the redundancy length are clamped; ignored when the stage is disabled.
     pub second_preprocessing_prefix_len: Option<usize>,
-    /// Maximum admitted candidates; zero produces an empty result with `Status::CandidateCapHit`.
+    /// Admission budget: `None` is uncapped; `Some(n)` admits at most `n` candidates.
+    /// `Some(0)` produces an empty result with `Status::CandidateCapHit`.
     /// Metric-pruned first-preprocessing branches consume no budget. Under
     /// `MinMetricThenCrc` without collection, this can reach later candidates
     /// than an unpruned search using the same cap and can change its winner.
-    pub max_recoded_candidates: usize,
+    pub max_recoded_candidates: Option<usize>,
     /// Maximum collected candidates; zero keeps the list empty without changing selection.
     pub max_list_candidates: usize,
     /// Include a CRC-preferred ordered candidate list in the result. This checks
@@ -63,7 +64,7 @@ impl Default for Config {
             parity_prefix_len: None,
             preprocessing_threshold: None,
             second_preprocessing_prefix_len: None,
-            max_recoded_candidates: 300_000,
+            max_recoded_candidates: None,
             max_list_candidates: 32,
             collect_candidates: false,
             selection_policy: SelectionPolicy::BestCrcValid,

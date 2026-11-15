@@ -131,7 +131,7 @@ fn cell_config(
     };
     config.search_order = w;
     config.enable_first_preprocessing = pre1;
-    config.max_recoded_candidates = cap;
+    config.max_recoded_candidates = Some(cap);
     config.collect_candidates = list.is_some();
     config.max_list_candidates = list.unwrap_or(32);
     config.require_crc = require_crc;
@@ -335,7 +335,7 @@ fn kernel_run(
     reference: bool,
 ) -> Outcome {
     let k = s.k;
-    s.decoder.config.max_recoded_candidates = cap;
+    s.decoder.config.max_recoded_candidates = Some(cap);
     let mask = low_mask(t);
     for i in 0..k {
         s.decoder.prefix_words[i] = s.decoder.basis.parity_basis_deltas[i][0] & mask;
@@ -486,7 +486,7 @@ fn preprocessing_decode_smoke(w: usize) {
         .decode(&capped.llr);
     let d = &uncapped.diagnostics;
     capped.config.max_recoded_candidates =
-        d.recoded_candidates - d.preprocess1_scored_candidates.min(3) + 1;
+        Some(d.recoded_candidates - d.preprocess1_scored_candidates.min(3) + 1);
     cells.push(capped);
     let mut hits = 0;
     for (n, cell) in cells.iter().enumerate() {
@@ -548,7 +548,7 @@ fn main_orders_match_the_generic_enumerator() {
             };
             let run = |cap: usize, generic: bool| {
                 let mut s = make();
-                s.decoder.config.max_recoded_candidates = cap;
+                s.decoder.config.max_recoded_candidates = Some(cap);
                 s.decoder.reference.main = generic;
                 let mut state = fresh_state();
                 s.decoder.batch.len = 0;

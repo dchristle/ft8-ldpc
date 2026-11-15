@@ -181,7 +181,7 @@ fn a_crc_valid_candidate_beats_a_closer_failing_one() {
     assert!(!result.diagnostics.best_any_crc_valid);
 }
 
-/// Checks search pattern counts at k = 91 and k = 77 with a large cap.
+/// Checks search pattern counts at k = 91 and k = 77 without a cap.
 #[test]
 fn pattern_counts_match_the_expected_totals() {
     let mut rng = Rng(0x15);
@@ -193,7 +193,6 @@ fn pattern_counts_match_the_expected_totals() {
             ..Default::default()
         };
         config.search_order = w;
-        config.max_recoded_candidates = 1 << 30;
         // This seeded input avoids early stopping, allowing the full pattern counts to be checked.
         let d = Decoder::new(config).unwrap().decode(&llr).diagnostics;
         assert_eq!(d.main_enumerated_patterns, main(w), "w {w}");
@@ -205,22 +204,22 @@ fn pattern_counts_match_the_expected_totals() {
     }
     assert_eq!(main(3), 125_671);
     assert_eq!(choose(91, 4), 2_672_670);
-    let mut config = Config {
+    let config = Config {
         cascade_bits: 14,
         ..Default::default()
     };
-    config.max_recoded_candidates = 1 << 30;
     let d = Decoder::new(config).unwrap().decode(&llr).diagnostics;
     assert_eq!(d.main_enumerated_patterns, 76_153);
     assert_eq!(d.preprocess1_examined, 1_353_275);
 
-    // At w = 4 the default cap is reached in main order 4 and nothing more is
+    // At w = 4 an explicit 300,000 cap is reached in main order 4 and nothing more is
     // visited: the refused pattern is number 174,329 of order 4.
     let mut config = Config {
         cascade_bits: 0,
         ..Default::default()
     };
     config.search_order = 4;
+    config.max_recoded_candidates = Some(300_000);
     let result = Decoder::new(config).unwrap().decode(&llr);
     assert_eq!(result.status, Status::CandidateCapHit);
     let d = result.diagnostics;
@@ -232,4 +231,26 @@ fn pattern_counts_match_the_expected_totals() {
 
 fn choose(n: usize, r: usize) -> usize {
     (0..r).fold(1, |acc, i| acc * (n - i) / (i + 1))
+}
+
+/// The default budget permits a complete search beyond the former 300,000 limit.
+#[test]
+fn uncapped_default_completes_order_four_main_search() {
+    let llr = noise(&mut Rng(0x15));
+    for selection_policy in [
+        SelectionPolicy::BestCrcValid,
+        SelectionPolicy::MinMetricThenCrc,
+    ] {
+        let config = Config {
+            search_order: 4,
+            enable_first_preprocessing: false,
+            selection_policy,
+            ..Default::default()
+        };
+        let result = Decoder::new(config).unwrap().decode(&llr);
+        assert!(!result.diagnostics.candidate_cap_hit);
+        assert_ne!(result.status, Status::CandidateCapHit);
+        assert_eq!(result.diagnostics.recoded_candidates, 2_798_342);
+        assert_eq!(result.diagnostics.main_enumerated_patterns, 2_798_341);
+    }
 }

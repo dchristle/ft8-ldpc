@@ -416,7 +416,11 @@ impl Decoder {
     }
     #[inline(always)]
     fn reserve<const MIN: bool>(&self, state: &mut SearchState<MIN>) -> bool {
-        if state.diagnostics.recoded_candidates >= self.config.max_recoded_candidates {
+        if self
+            .config
+            .max_recoded_candidates
+            .is_some_and(|cap| state.diagnostics.recoded_candidates >= cap)
+        {
             state.diagnostics.candidate_cap_hit = true;
             return false;
         }

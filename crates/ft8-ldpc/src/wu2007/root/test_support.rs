@@ -139,7 +139,7 @@ pub(crate) fn pre2_config(w: usize, tau: Option<usize>, cap: usize) -> Config {
     config.enable_first_preprocessing = false;
     config.enable_second_preprocessing = true;
     config.second_preprocessing_prefix_len = tau;
-    config.max_recoded_candidates = cap;
+    config.max_recoded_candidates = Some(cap);
     config.collect_candidates = true;
     config.max_list_candidates = 64;
     config

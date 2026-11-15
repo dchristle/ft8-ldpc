@@ -124,7 +124,7 @@ fn pruning_matches_scalar_traversal_at_budget_and_prefix_boundaries() {
                             selection_policy: SelectionPolicy::MinMetricThenCrc,
                             parity_prefix_len: Some(prefix),
                             preprocessing_threshold: Some(m + prefix / 2),
-                            max_recoded_candidates: cap,
+                            max_recoded_candidates: Some(cap),
                             enable_second_preprocessing: second_stage,
                             ..Config::default()
                         };
@@ -231,7 +231,7 @@ fn zero_ties_and_overflow_keep_the_first_candidate() {
                 search_order: m - 1,
                 selection_policy: SelectionPolicy::MinMetricThenCrc,
                 parity_prefix_len: Some(0),
-                max_recoded_candidates: usize::MAX,
+                max_recoded_candidates: None,
                 ..Config::default()
             };
             let mut s = synthetic(0xb0_0d_0003, 12, 512, config);
@@ -273,7 +273,7 @@ fn pruned_branches_free_budget_for_a_later_winner() {
             search_order: m - 1,
             selection_policy: SelectionPolicy::MinMetricThenCrc,
             parity_prefix_len: Some(0),
-            max_recoded_candidates: 2,
+            max_recoded_candidates: Some(2),
             ..Config::default()
         };
         let mut s = synthetic(0xb0_0d_0004, k, 0, config);

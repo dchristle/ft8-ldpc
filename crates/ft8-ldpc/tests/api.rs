@@ -14,7 +14,7 @@ fn configuration_fields_match_defaults() {
         parity_prefix_len: None,
         preprocessing_threshold: None,
         second_preprocessing_prefix_len: None,
-        max_recoded_candidates: 300_000,
+        max_recoded_candidates: None,
         max_list_candidates: 32,
         collect_candidates: false,
         selection_policy: SelectionPolicy::BestCrcValid,
@@ -108,7 +108,7 @@ fn prefix_clamping_and_disabled_options_preserve_results() {
                 enable_second_preprocessing: second,
                 parity_prefix_len: Some(83),
                 second_preprocessing_prefix_len: Some(83),
-                max_recoded_candidates: 256,
+                max_recoded_candidates: Some(256),
                 collect_candidates: true,
                 max_list_candidates: 0,
                 ..Default::default()
@@ -199,7 +199,7 @@ fn a_zero_cap_gives_the_empty_result() {
             cascade_bits: 0,
             ..Default::default()
         };
-        config.max_recoded_candidates = 0;
+        config.max_recoded_candidates = Some(0);
         config.enable_second_preprocessing = second;
         let result = Decoder::new(config).unwrap().decode(&llr);
         assert_eq!(result.status, Status::CandidateCapHit);

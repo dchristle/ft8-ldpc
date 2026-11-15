@@ -112,6 +112,8 @@ fn collection_off_decodes_allocate_nothing_after_construction() {
                         enable_first_preprocessing: first,
                         enable_second_preprocessing: second,
                         second_preprocessing_prefix_len: tau,
+                        // Keep this allocation/reuse matrix bounded independently of defaults.
+                        max_recoded_candidates: Some(300_000),
                         collect_candidates: false,
                         require_crc,
                         ..Default::default()

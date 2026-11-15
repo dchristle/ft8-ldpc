@@ -162,7 +162,7 @@ mod tests {
                     };
                     let survivors = all.iter().filter(|&&p| direct(p).1).count();
                     for cap in [0, 1, 3, survivors, survivors + 1] {
-                        decoder.config.max_recoded_candidates = cap;
+                        decoder.config.max_recoded_candidates = Some(cap);
                         let mut expected = state();
                         for &positions in &all {
                             let mut diff = baseline;
@@ -255,7 +255,7 @@ mod tests {
         let (mut decoder, baseline) = synthetic_decoder();
         for count in 0..=12 {
             for cap in 0..=13 {
-                decoder.config.max_recoded_candidates = cap;
+                decoder.config.max_recoded_candidates = Some(cap);
                 let mut expected = state();
                 let mut actual = state();
                 for i in 0..count {
@@ -300,7 +300,7 @@ mod tests {
         for m in 4..=6 {
             let all = patterns(7, m);
             for cap in [0, 1, 3, all.len(), all.len() + 1] {
-                decoder.config.max_recoded_candidates = cap;
+                decoder.config.max_recoded_candidates = Some(cap);
                 let mut expected = state();
                 for &positions in &all {
                     let mut diff = baseline;
